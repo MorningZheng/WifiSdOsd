@@ -36,7 +36,7 @@ String md5(char* text) {
 
 void setup() {
     SERIAL_INIT(115200);
-    setCpuFrequencyMhz(240);//提高运行频率
+    // setCpuFrequencyMhz(240);//提高运行频率
     config.setup();
 
     HOST = config.get("host");
@@ -83,6 +83,7 @@ void doInit(void* pvParameters) {
     // Free resources
     http.end();
 
+    delay(BOOT_WAIT_TIME);
     // 初始化读卡器
     SPIFFS.begin();
     sdControl.setup();
