@@ -16,9 +16,9 @@ String HOST;
 int PORT;
 
 
-#define FREEZE_TIME 90 * 1000
+#define FREEZE_TIME 30 * 1000
 #define BOOT_WAIT_TIME 15 * 1000
-#define NEXT_WAIT_TIME 60 * 1000
+#define NEXT_WAIT_TIME 30 * 1000
 
 #define MTU_SIZE 4096  // this size seems to work best
 // file sending from SD card
@@ -36,7 +36,7 @@ String md5(char* text) {
 
 void setup() {
     SERIAL_INIT(115200);
-    setCpuFrequencyMhz(240);//提高运行频率
+    setCpuFrequencyMhz(240);  //提高运行频率
     config.setup();
 
     HOST = config.get("host");
@@ -210,6 +210,7 @@ bool doUpload(String path) {
     path.trim();
     if (!path.length()) return true;
 
+    network.connect(config.get("ssid"), config.get("password"));
     WiFiClient client;
     if (client.connect(HOST.c_str(), PORT)) {
         Serial.println("Uploading " + path);
