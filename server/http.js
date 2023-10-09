@@ -16,6 +16,7 @@ require('http').createServer((req, res) => {
             // res.end(req.url);
         });
     }else{
+        console.log(name);
         res.end(req.url);
     }
 }).listen(7788);

@@ -14,6 +14,8 @@
 
 int Network::connect(String ssid, String pwd) {
   wifiConnecting = true;
+
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, pwd);
   while (WiFi.status() != WL_CONNECTED) {
     delay(200);
@@ -24,6 +26,7 @@ int Network::connect(String ssid, String pwd) {
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
+  
   return 1;
 }
 

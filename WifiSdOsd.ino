@@ -16,14 +16,14 @@ String HOST;
 int PORT;
 
 
-#define FREEZE_TIME 30 * 1000
-#define BOOT_WAIT_TIME 15 * 1000
-#define NEXT_WAIT_TIME 30 * 1000
+#define FREEZE_TIME 10 * 1000
+#define BOOT_WAIT_TIME 1 * 1000
+#define NEXT_WAIT_TIME 10 * 1000
 
-#define MTU_SIZE 4096  // this size seems to work best
+#define MTU_SIZE 1024  // this size seems to work best
 // file sending from SD card
 byte clientBuf[MTU_SIZE];
-TaskHandle_t myInit;
+TaskHandle_t readChangeHd;
 
 String md5(char* text) {
     unsigned char* make = MD5::make_hash(text);
@@ -38,20 +38,35 @@ void setup() {
     SERIAL_INIT(115200);
     setCpuFrequencyMhz(240);  //提高运行频率
     config.setup();
+    Serial.println("Booting...");
 
     HOST = config.get("host");
     PORT = config.get("port", "80").toInt();
 
-    Serial.println("Booting...");
+    // doInit();
 
-    // 启动多任务，看看是否能解决锁死的情况
-    xTaskCreatePinnedToCore(doInit, "init", 16 * 1024, NULL, 1, &myInit, tskNO_AFFINITY);
-    Serial.println("xTaskCreatePinnedToCore");
+    SPIFFS.begin();
+    sdControl.setup();
+    network.connect(config.get("ssid"), config.get("password"));
+
+    sdControl.takeControl();
+    doUpload("/zc.png");
+    sdControl.relinquishControl();
 
 
     // sdControl.takeControl();
-    // doUpload("/abc.txt");
+    // File dataFile = SD.open("zc.png", FILE_READ);
+
+    // byte buffer[dataFile.size()];
+    // int clientCount = 0;
+    // while (dataFile.available()) {
+    //     clientBuf[clientCount] = dataFile.read();
+    //     clientCount++;
+    // }
+    // dataFile.close();
     // sdControl.relinquishControl();
+
+
 
     // config.useDef();
 }
@@ -90,10 +105,16 @@ void doInit(void* pvParameters) {
 
     delay(BOOT_WAIT_TIME);
     Serial.println("Check for SD change.");
-    readChange();
+
+    // 启动多任务，看看是否能解决锁死的情况
+    xTaskCreatePinnedToCore(readChange, "init", 16 * 1024, NULL, 1, &readChangeHd, tskNO_AFFINITY);
+    Serial.println("xTaskCreatePinnedToCore");
+    // readChange(NULL);
 }
 
-void readChange() {
+void readChange(void* args) {
+    (void)args;
+
     sdControl.takeControl();
     current = "";
 
@@ -105,10 +126,9 @@ void readChange() {
 
     //文件没有变化
     if (strlen(current.c_str()) < 10) {
-        // readChange();
         Serial.println("File no change,Waiting for next check.");
         delay(NEXT_WAIT_TIME);
-        readChange();  //下一次确认变化循环
+        readChange(NULL);  //下一次确认变化循环
         return;
     }
 
@@ -118,18 +138,17 @@ void readChange() {
     if (config.get("commit") == hash) {
         Serial.println("File have uploaded,Waiting for next check.");
         delay(NEXT_WAIT_TIME);
-        readChange();  //下一次确认变化循环
+        readChange(NULL);  //下一次确认变化循环
         return;
     }
 
     //冷却过后
     if (config.get("current") != hash) {
-        // readChange();
         Serial.println("File change,Waiting for freezing.");
         config.set("current", hash);
         Serial.println("");
         delay(FREEZE_TIME);
-        readChange();  //再次确认变化情况
+        readChange(NULL);  //再次确认变化情况
         return;
     }
 
@@ -139,7 +158,7 @@ void readChange() {
     startUpload();
     Serial.println("Set commit to " + hash);
     delay(NEXT_WAIT_TIME);
-    readChange();  //下一次确认变化循环
+    readChange(NULL);  //下一次确认变化循环
 }
 
 void readChangeWorker(String path) {
@@ -210,7 +229,6 @@ bool doUpload(String path) {
     path.trim();
     if (!path.length()) return true;
 
-    network.connect(config.get("ssid"), config.get("password"));
     WiFiClient client;
     if (client.connect(HOST.c_str(), PORT)) {
         Serial.println("Uploading " + path);
@@ -232,6 +250,7 @@ bool doUpload(String path) {
         client.write(buff);
 
         int clientCount = 0;
+        byte buffer[MTU_SIZE];
         while (dataFile.available()) {
             if (dataFile.available() < MTU_SIZE) {
                 clientCount = dataFile.available();
@@ -240,13 +259,26 @@ bool doUpload(String path) {
             }
 
             if (clientCount > 0) {
-                dataFile.read(&clientBuf[0], clientCount);
-                client.write((const uint8_t*)&clientBuf[0], clientCount);
+                dataFile.read(&buffer[0], clientCount);
+                client.write((const uint8_t*)&buffer[0], clientCount);
                 clientCount = 0;
             }
         }
-        // Serial.println("File end.");
+        //尝试读取完后上传
+        // const int SIZE=4096;
+        // byte buffer[SIZE];
+        // int clientCount = 0;
+        // while (dataFile.available()) {
+        //     clientBuf[clientCount] = dataFile.read();
+        //     clientCount++;
+        //     if(clientCount==SIZE){
+        //       break;
+        //     }
+        // }
         dataFile.close();
+        // client.write((const uint8_t*)&buffer[0], clientCount);
+        Serial.println("File end.");
+        
 
         String res = client.readString();
         client.stop();
@@ -266,7 +298,7 @@ bool doUpload(String path) {
         }
         return true;
     } else {
-        Serial.println("Connect failed");
+        Serial.printf("Connect failed at %s:%d\n", HOST, PORT);
         return false;
     }
 }
